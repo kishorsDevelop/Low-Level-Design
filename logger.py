@@ -35,9 +35,16 @@ class ErrorHandler(Handler):
         else:
             self.next.handle(level, message)
 
+class DebugHandler(Handler):
+    pass
+
+class FailureHandler(Handler):
+    pass
+
 class Logger:
 
     def __init__(self):
+        # can be extended to debug handler and failure handler 
         errorhandler = ErrorHandler(None)
         warnhandler = WarnHandler(errorhandler)
         infohandler = InfoHandler(warnhandler)
@@ -49,6 +56,6 @@ class Logger:
 
 if __name__ == '__main__':
     logger = Logger()
-    # logger.log("WARN", "Warning")
-    # logger.log("INFO", "Information")
+    logger.log("WARN", "Warning")
+    logger.log("INFO", "Information")
     logger.log("ERROR", "Error")
