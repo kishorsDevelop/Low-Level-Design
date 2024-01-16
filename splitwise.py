@@ -1,3 +1,4 @@
+##########################################################################################################
 class Split:
     def __init__(self, user, share):
         self.user = user
@@ -69,12 +70,15 @@ class Group:
                 transactions.append([balance.debtor, balance.creditor, balance.amount])
 
         simplify_debt = self.simplify(transactions)
+        
+        for debtor, creditor, amount in simplify_debt:
+            debtor.notify(f"Paid {amount} to {creditor.name}")
 
         for user in all_users:
             user.balances = []
         
         for user in all_users:
-            user.notify_users("All expense settles in the group")
+            user.notify("All expense settles in the group")
         
     def print_notifications(self):
         print(f"Notification for Group {self.group_id} ({self.name}):")
@@ -92,25 +96,36 @@ class Group:
             if val != 0:
                 balance.append(val)
         
-        def backtrack(ind):
+        def backtrack(ind, dp, memo):
     
             while ind < len(balance) and balance[ind] == 0:
                 ind += 1
             
             if ind == len(balance):
-                return 0
+                return []
             
-            res = float('inf')
-
-            for i in range(ind+1, len(balance)):
-                if balance[i] * balance[ind] < 0:
-                    balance[i] += balance[ind]
-                    res = min(res, 1 + backtrack(ind+1))
-                    balance[i] -= balance[ind]
+            current_balance = balance[ind]
             
-            return res
-
-        return backtrack(0)
+            if ind not in memo[ind]:
+               memo[ind] = {}
+            
+            if current_balance not in memo[ind]:
+                min_trans = float('inf')
+                best_trans = None
+                for i in range(ind+1, len(balance)):
+                    if balance[i] * current_balance < 0:
+                        balance[i] += current_balance
+                        remaining_trans = backtrack(ind+1, dp, memo)
+                        if len(remaining_trans) + 1 < min_trans:
+                            min_trans = len(remaining_trans) + 1
+                            best_trans = (ind, i, current_balance)
+                        balance[i] -= current_balance
+                
+                memo[ind][current_balance] = (best_trans, min_trans)
+            
+            best_trans, _  = memo[ind][current_balance]
+            return [best_trans] + backtrack(balance, ind+1, dp, memo)
+        return backtrack(0, {}, {})
 
 class Expense:
     def __init__(self, id, description, expense_type, amount, splits, created_by):
