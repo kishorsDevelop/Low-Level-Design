@@ -1,241 +1,213 @@
-##########################################################################################################
+from abc import ABC, abstractmethod
+class Balance:
+    def __init__(self, debtor, creditor, amount):
+        self.debtor = debtor
+        self.creditor = creditor
+        self.amount = amount
+
 class Split:
     def __init__(self, user, share):
         self.user = user
         self.share = share
 
-class Balance:
-    def __init__(self, debtor, creditor, amount):
-        self.debter = debtor
-        self.creditor = creditor
-        self.amount = amount
-
 class User:
     def __init__(self, id, name, mobile_number, email):
-        self.id = id
+        self.user_id = id
         self.name = name
         self.mobile_number = mobile_number
         self.email = email
         self.balances = []
-        self.notifications = []
-
+    
     def add_balance(self, creditor, amount):
         balance = Balance(self, creditor, amount)
         self.balances.append(balance)
-    
-    def notify(self, message):
-        self.notifications.append(message)
 
-    def print_notifications(self):
-        print(f"Notifications for User {self.id}:")
-        for notification in self.notifications:
-            print(f" - {notification}")  
+class ExpenseType(ABC):
+    @abstractmethod
+    def settle_expense(self, expense):
+        pass
 
-class Group:
-    def __init__(self, id, name, users):
-        self.group_id = id
-        self.name = name
-        self.users = users
-        self.expenses = []
-    
-    def add_expense(self, expense):
-        self.expenses.append(expense)
-        for user in expense.involved_users:
-            user.notify(f"Expense '{expense.description} added in group '{self.name}'")
-    
-    def edit_expense(self, expense_id, new_description, new_amount, new_splits):
-        for expense in self.expenses:
-            if expense.id == expense_id:
-                expense.description = new_description
-                expense.amount = new_amount
-                expense.split = new_splits
-                expense.notify_users(f"Expense edited in group '{self.name}'" 
-                                     f"New description: {new_description}, New Amount: {new_amount}")
+class EqualExpense(ExpenseType):
+    def settle_expense(self, expense):
+        split_amount = expense.amount/len(expense.involved_users)
+        for split in expense.splits:
+            split.user.add_balance(expense.created_by, split_amount)
 
-    def delete_expense(self, expense_id):
-        for expense in self.expenses:
-            if expense.id == expense_id:
-                self.expenses.remove(expense)
-                expense.notify_users(f"Expense '{expense.description}' deleted in group '{self.name}' ")
+class ExactExpense(ExpenseType):
+    def settle_expense(self, expense):
+        split_amount = expense.amount/len(expense.involved_users)
+        for split in expense.splits:
+            split.user.add_balance(expense.created_by, split.share - split_amount)
 
-    def settle_expenses(self):
-        all_users = self.users
-        for expense in self.expenses:
-            for user in expense.involved_users:
-                all_users.append(user)
-        
-        transactions = []
-        for user in all_users:
-            for balance in user.balances:
-                transactions.append([balance.debtor, balance.creditor, balance.amount])
-
-        simplify_debt = self.simplify(transactions)
-        
-        for debtor, creditor, amount in simplify_debt:
-            debtor.notify(f"Paid {amount} to {creditor.name}")
-
-        for user in all_users:
-            user.balances = []
-        
-        for user in all_users:
-            user.notify("All expense settles in the group")
-        
-    def print_notifications(self):
-        print(f"Notification for Group {self.group_id} ({self.name}):")
-        for expense in self.expenses:
-            expense.notify_users("Expense settled in the group.")
-    
-    def simplify(self, transactions):
-        map = {}
-        for trans in transactions:
-            map[trans[0]] = map.get(trans[0], 0) - trans[2]
-            map[trans[1]] = map.get(trans[1], 0) + trans[2]
-        
-        balance = []
-        for key, val in map.items():
-            if val != 0:
-                balance.append(val)
-        
-        def backtrack(ind, dp, memo):
-    
-            while ind < len(balance) and balance[ind] == 0:
-                ind += 1
-            
-            if ind == len(balance):
-                return []
-            
-            current_balance = balance[ind]
-            
-            if ind not in memo[ind]:
-               memo[ind] = {}
-            
-            if current_balance not in memo[ind]:
-                min_trans = float('inf')
-                best_trans = None
-                for i in range(ind+1, len(balance)):
-                    if balance[i] * current_balance < 0:
-                        balance[i] += current_balance
-                        remaining_trans = backtrack(ind+1, dp, memo)
-                        if len(remaining_trans) + 1 < min_trans:
-                            min_trans = len(remaining_trans) + 1
-                            best_trans = (ind, i, current_balance)
-                        balance[i] -= current_balance
-                
-                memo[ind][current_balance] = (best_trans, min_trans)
-            
-            best_trans, _  = memo[ind][current_balance]
-            return [best_trans] + backtrack(balance, ind+1, dp, memo)
-        return backtrack(0, {}, {})
-
-class Expense:
-    def __init__(self, id, description, expense_type, amount, splits, created_by):
-        self.id = id
-        self.description = description
-        self.expense_type = expense_type
-        self.amount = amount
-        self.splits = splits
-        self.involved_users = [split.user for split in splits]
-        self.created_by = created_by
-        self.notifications = []
-
-    def notify_users(self, message):
-        for user in self.involved_users:
-            user.notify(message)
-
-    def settle_expense(self):
-        if self.expense_type == 'EQUAL':
-            self.settle_expense_equal()
-        elif self.expense_type == 'UNEQUAL':
-            self.settle_expense_unequal()
-        elif self.expense_type == 'PERCENT':
-            self.settle_expense_percent()
-    
-    def settle_expense_equal(self):
-        split_amount = self.amount/len(self.involved_users)
-        for split in self.splits:
-            split.user.add_balance(self.created_by, split_amount)
-    
-    def settle_expense_unequal(self):
-        split_amount = self.amount/len(self.involved_users)
-        for split in self.splits:
-            split.user.add_balance(self.created_by, split.share - split_amount)
-
-    def settle_expense_percent(self):
-        total_percent = sum(split.share for split in self.splits)
-        if total_percent != 100:
+class PercentExpense(ExpenseType):
+    def settle_expense(self, expense):
+        total_share = sum(split.share for split in expense.splits)
+        if total_share != 100:
             raise ValueError("Total percentage shares do not add upto 100")
         
-        for split in self.splits:
-            split_amount = (split.share/100) * self.amount
-            split.user.add_balance(self.created_by, split_amount)
+        for split in expense.splits:
+            split.user.add_balance(expense.created_by, (split.share/100) * expense.amount)
 
+class Expense:
+    def __init__(self, id, description, expense_type, amount, created_by, splits):
+        self.expense_id = id
+        self.description = description
+        self.expense_type = self._settle_expenses(expense_type)
+        self.amount = amount
+        self.involved_users = [split.user for split in splits]
+        self.created_by = created_by
+        self.splits = splits
+    
+    def _settle_expenses(self, expense_type):
+        if expense_type == 'EQUAL':
+           return EqualExpense()   
+        elif expense_type == 'UNEQUAL':
+           return ExactExpense()
+        elif expense_type == 'PERCENT':
+           return PercentExpense()
+    
+    def settle_expense(self):
+        self.expense_type.settle_expense(self)
+
+class Group:
+      def __init__(self, id, name, users):
+          self.group_id = id
+          self.name = name
+          self.expenses = []
+          self.users = users
+        
+      def add_expense(self, expense):
+          self.expenses.append(expense)
+        
+      def edit_expense(self, id, new_description, new_amount, new_splits):
+          for expense in self.expenses:
+              if expense.id == id:
+                  expense.description = new_description
+                  expense.amount = new_amount
+                  expense.splits = new_splits
+                  break
+      
+      def delete_expense(self, id):
+          for expense in self.expenses:
+              if expense.id == id:
+                  self.expenses.remove(expense)
+                  break
+      
+      def settle_expense(self):
+          all_users = self.users
+          for expense in self.expenses:
+              for user in expense.involved_users:
+                  all_users.append(user)
+
+          transactions = []
+          for user in all_users:
+              for balance in user.balances:
+                  debtor = balance.debtor
+                  creditor = balance.creditor
+                  amount = balance.amount
+                  transactions.append([debtor, creditor, amount])
+          
+          min_result = self.simplify(transactions)
+          for user in all_users:
+              user.balances = []
+
+          return min_result
+        
+      def simplify(self, transactions):
+          map = {}
+          for debtor, creditor, amount in transactions:
+              map[debtor] = map.get(debtor, 0) - map[amount]
+              map[creditor] = map.get(creditor, 0) + map[amount]
+
+          balance = []
+          for amount in map.values():
+              if amount != 0:
+                 balance.append(amount)
+
+          return self.dfs(balance, 0)
+
+      def dfs(self, balance, ind):
+          
+          if balance[ind] == 0:
+              return 0
+
+          while ind < len(balance) and balance[ind] == 0:
+              ind += 1
+          
+          res = float('inf')
+          for i in range(ind+1, len(balance)):
+              if balance[i] * balance[ind] < 0:
+                  balance[i] += balance[ind]
+                  res = min(res, 1 + self.dfs(balance, ind+1))
+                  balance[i] -= balance[ind]
+        
+          return res
+
+    
 class Splitwise:
     def __init__(self):
         self.users = {}
         self.groups = {}
     
-    def add_user(self, user_id, name, email, mobile_number):
-        user = User(user_id, name, mobile_number, email)
-        self.users[user_id] = user
+    def add_user(self, id, user):
+        self.users[id] = user
     
-    def add_group(self, group_id, name, users):
-        group = Group(group_id, name, users)
-        self.groups[group_id] = group
+    def add_group(self, id, group):
+        self.groups[id] = group
     
-    def add_expense(self, user_id, group_id, expense_id, description, amount, expense_type, splits):
+    def add_expense(self, user_id, group_id, expense_id, description, expense_type, amount, splits):
         user = self.users[user_id]
-        group = self.groups[user_id]
-        expense = Expense(expense_id, description, expense_type, amount, splits, user)
+        group = self.groups[group_id]
+        expense = Expense(expense_id, description, expense_type, amount, user, splits)
         group.add_expense(expense)
+
+        for split in splits:
+            if split.user != user:
+                user.add_balance(split.user, split.share - amount/len(expense.involved_users))
+
+    def edit_expense(self, group_id, expense_id, new_description, new_amount, new_splits):
+        group = self.groups[group_id]
+        group.edit_expense(expense_id, new_description, new_amount, new_splits)
     
     def delete_expense(self, group_id, expense_id):
         group = self.groups[group_id]
         group.delete_expense(expense_id)
     
+    def settle_expense(self, group_id):
+        group = self.groups[group_id]
+        group.settle_expenses()
+    
     def list_expense_with_friend(self, user_id, friend_id):
         user = self.users[user_id]
         friend = self.users[friend_id]
         expenses_with_friend = []
-        for group in self.groups.values():
+        for group in self.group.values():
             for expense in group.expenses:
                 if user in expense.involved_users and friend in expense.involved_users:
                     expenses_with_friend.append(expense)
-        
         return expenses_with_friend
+
+
+if __name__ == '__main__':
+    user1 = User(1, 'User1', 123456789, 'user1@gmail.com')
+    user2 = User(1, 'User2', 123455432, 'user2@gmail.com')
+    user3 = User(1, 'User3', 123455342, 'user3@gmail.com')
+
+    splitwise = Splitwise()
+    splitwise.add_user(1, user1)
+    splitwise.add_user(2, user2)
+    splitwise.add_user(3, user3)
+
+    splits = [Split(splitwise.users[1], 30.34), Split(splitwise.users[2], 30.34), Split(splitwise.users[3], 30.34)]
+
+    group1 = Group(1, 'Friends', [splitwise.users[1], splitwise.users[2], splitwise.users[3]])
     
-    def settle_expenses(self, user_id, group_id):
-        group = self.groups[group_id]
-        group.settle_expenses()
+    splitwise.add_group(1, group1)
 
-    def print_notifications(self):
-        print("Priniting all notifications: ")
-        for user in self.users.values():
-            user.print_notifications()
-        for group in self.groups.values():
-            group.print_notifications()
+    splitwise.add_expense(1, 1, 1, 'Dinner', 'EQUAL', 100, splits)
+    
+    equal_splits = [Split(splitwise.users[1], 30.34), Split(splitwise.users[2], 30.34), Split(splitwise.users[3], 30.34)]
 
-splitwise = Splitwise()
+    equal_expense = Expense(1, "Dinner", "EQUAL", 100, user1, equal_splits)
 
-user1 = User(1, "User1", "123456789", "user1@gmail.com")
-user2 = User(2, 'User2', '987654321', 'user2@gmail.com')
-user3 = User(3, 'User3', '123321123', 'user3@gmail.com')
-
-splitwise.add_user(1, "User1", "123456789", "user1@gmail.com")
-splitwise.add_user(2, 'User2', '987654321', 'user2@gmail.com')
-splitwise.add_user(3, 'User3', '123321123', 'user3@gmail.com')
-
-# create a group
-splitwise.add_group(1, 'Friends', [splitwise.users[1], splitwise.users[2], splitwise.users[3]])
-
-# add an expense to the group
-splits = [Split(splitwise.users[1], 33.34), Split(splitwise.users[2], 33.34), Split(splitwise.users[3], 33.34)]
-
-splitwise.add_expense(1, 1, 1, "Dinner", 100, "EQUAL", splits)
-
-friend_expenses = splitwise.list_expense_with_friend(1, 2)
-for expense in friend_expenses:
-    print(f"Expense with User2: {expense.description} - {expense.amount}")
-
-splitwise.settle_expenses(1, 1)
-splitwise.print_notifications()
-
+    equal_expense.settle_expense()
