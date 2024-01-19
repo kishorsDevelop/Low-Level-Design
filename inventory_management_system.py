@@ -175,7 +175,7 @@ class Warehouse:
 
 if __name__ == '__main__':
 
-    user1 = User(1, "John Doe", "abc@gmail.com", "7011210011")
+    user1 = User(1, "John_Doe", "abc@gmail.com", "7011210011")
 
     pendrive = Product(1, 'sandisk', "Pendrive 256 GB", 500, 5)
     laptop = Product(1, "Macbook", "Mac Notebook", 90000, 5)
